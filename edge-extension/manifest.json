@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "美团外卖 · 桌面经营看板",
   "short_name": "美团桌面看板",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "在已登录的 Edge 里于后台隐藏读取美团外卖商家中心「今日实时数据」，推送到本机 PecoFence 桌面栅栏。",
   "permissions": [
     "alarms",

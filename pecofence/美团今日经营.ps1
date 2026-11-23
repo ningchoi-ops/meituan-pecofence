@@ -6,7 +6,7 @@
 # ⚠ 不要直接改这个文件（自动更新会覆盖它）。要改设置，请编辑同一文件夹里的「设置.ps1」。
 # 想每家店一个栅栏：把本文件复制一份，改名为「美团今日经营-店名关键字.ps1」（例如 美团今日经营-海南粉.ps1）。
 
-$AppVersion = '2.2.0'
+$AppVersion = '2.3.0'
 $UpdateRepo = 'ningchoi-ops/meituan-pecofence'   # GitHub 仓库（用户名/仓库名），自动更新从这里下载
 
 # ---------- 默认设置（在「设置.ps1」里改，不要改这里） ----------
@@ -19,11 +19,12 @@ $OrderBarMax   = 0.30       # 下单转化率进度条满格 = 30%
 $ShowTop       = $true      # 显示实时热销前三（只有一家店时）
 $ShowYday      = $true      # 显示昨日全天汇总（只有一家店时）
 $ShowPeer      = $true      # 显示商圈同行转化率
+$ShopSwitch    = $true      # 有多家店时：$true = 一次看一家，点栅栏底部的店名切换；$false = 全部门店紧凑显示
 $AutoUpdate    = $true      # 自动从 GitHub 更新
 $BarOn         = '▰'        # 进度条字符；若显示成方框可改成 '■' / '□'
 $BarOff        = '▱'
-$GoalIncome    = 0          # 今日美团收入目标（元，按「预计订单收入」算）；0 = 不显示目标行
-$GoalOrders    = 0          # 今日订单量目标（单）；0 = 不显示
+$GoalIncome    = 0          # 今日美团收入目标（元，按「预计订单收入」算）；0 = 不显示目标行。多家店可写 @{ '椰宁记' = 1250; '小顺' = 800 }
+$GoalOrders    = 0          # 今日订单量目标（单）；0 = 不显示。多家店写法同上
 $GoalNote      = ''         # 目标行的悬停说明，例如基准数据
 $Plan          = @{}        # 每日任务：@{ '2026-11-24' = '要做的事'; '2026-11-25' = @('要做的事', '悬停显示的细节') }
 $PlanDayStart  = 5          # 凌晨几点前仍算前一天（营业到凌晨时，01:00 还显示前一天的任务）
@@ -39,6 +40,7 @@ if (-not (Test-Path $SettingsFile)) {
     "# `$ShowTop       = `$false        # 不显示热销前三",
     "# `$ShowYday      = `$false        # 不显示昨日全天",
     "# `$ShowPeer      = `$false        # 不显示商圈同行",
+    "# `$ShopSwitch    = `$false        # 多家店时全部紧凑显示，不用切换",
     "# `$AutoUpdate    = `$false        # 关闭自动更新",
     "# `$BarOn = '■'; `$BarOff = '□'    # 进度条显示成方框时改用这两个字符",
     "# `$GoalIncome = 1250              # 今日美团收入目标（元）；0 = 不显示目标行",
@@ -63,6 +65,14 @@ if (-not $Base) { $Base = Join-Path $HOME '.local/share' }
 $ShopDir = Join-Path $Base 'MeituanDesk\shops'
 if ($env:MTDESK_SHOPDIR) { $ShopDir = $env:MTDESK_SHOPDIR }
 [void](New-Item -ItemType Directory -Force -Path $ShopDir)
+# 当前选中的门店（每个栅栏脚本各记各的）
+$SelFile = Join-Path (Split-Path $ShopDir -Parent) "selected-$MyName.txt"
+$PsExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+# 点栅栏上的「切换到…」时，PecoFence 会用「select 门店ID」参数运行本脚本：只记下选择，马上退出
+if ($args.Count -ge 2 -and $args[0] -eq 'select') {
+  try { [IO.File]::WriteAllText($SelFile, ([string]$args[1] -replace '[^\w\-]', '_'), $Utf8) } catch { }
+  exit 0
+}
 
 # ---------- 格式化 ----------
 function Clean([object]$s) {
@@ -123,9 +133,21 @@ function Plan-Line {
   return $line
 }
 
+# 目标值：数字 = 每家店都用这个；@{ '店名关键字' = 数字 } = 按店名或门店 ID 匹配
+function Goal-For($v, $d) {
+  if ($v -is [System.Collections.IDictionary]) {
+    $hay = [string]$d.shop.name + ' ' + [string]$d.shop.id
+    foreach ($k in $v.Keys) {
+      if ($k -and $hay.IndexOf([string]$k, [StringComparison]::OrdinalIgnoreCase) -ge 0) { try { return [double]$v[$k] } catch { return 0.0 } }
+    }
+    return 0.0
+  }
+  try { return [double]$v } catch { return 0.0 }
+}
+
 # 今日目标（设置.ps1 里的 $GoalIncome / $GoalOrders）
-function Goal-Line($inc, $ord) {
-  $gi = [double]$GoalIncome; $go = [double]$GoalOrders
+function Goal-Line($inc, $ord, $d) {
+  $gi = Goal-For $GoalIncome $d; $go = Goal-For $GoalOrders $d
   if ($gi -le 0 -and $go -le 0) { return $null }
   $parts = @()
   $done = $true
@@ -209,7 +231,7 @@ function Merge-Payload($p) {
 # ---------- 画栅栏 ----------
 function Shop-Title($d, [bool]$single) {
   $n = $d.shop.name
-  if ($single -and $TitleOverride) { $n = $TitleOverride }
+  if ($script:ShopCount -eq 1 -and $TitleOverride) { $n = $TitleOverride }
   if (-not $n) { $n = '门店 ' + $d.shop.id }
   return (Clean $n)
 }
@@ -296,7 +318,7 @@ function Shop-Lines($d, [bool]$single) {
     $L.Add((Join2 ('收　入　' + (Money $inc.value)) (Delta $inc -IsMoney)) + " | icon=💵 tooltip='预计订单收入：扣除平台服务费、配送费和活动补贴后的商家收入'")
     $L.Add((Join2 ('订单量　' + (IntU $ord.value '单')) (Delta $ord)) + ' | icon=🧾')
     $L.Add((Join2 ('客单价　' + (Money $avg)) $avgTxt) + " | icon=🧮 tooltip='客单价 = 订单实付 ÷ 订单量'")
-    $gl = Goal-Line $inc $ord
+    $gl = Goal-Line $inc $ord $d
     if ($gl) { $L.Add($gl) }
     $L.Add('---')
     $L.Add((Join2 ('曝光量　' + (IntU $exp.value '人')) (Delta $exp)) + ' | icon=👀')
@@ -341,6 +363,22 @@ function Shop-Lines($d, [bool]$single) {
   return $L
 }
 
+# ---------- 切换门店 ----------
+function Get-Selected {
+  try { if (Test-Path $SelFile) { return ([IO.File]::ReadAllText($SelFile, $Utf8)).Trim() } } catch { }
+  return ''
+}
+function Select-Run([string]$id) {
+  return "run='$PsExe' param1=-NoProfile param2=-ExecutionPolicy param3=Bypass param4=-WindowStyle param5=Hidden param6=-File param7='$PSCommandPath' param8=select param9=$(Safe-Id $id)"
+}
+function Switch-Line($d) {
+  $n = Clean $d.shop.name
+  if (-not $n) { $n = '门店 ' + (Clean $d.shop.id) }
+  $sum = ''
+  if ($d.rt) { $sum = '　收入 ' + (Money $d.rt.income.value) + ' · ' + (IntU $d.rt.orders.value '单') }
+  return "切换到 $n$sum | icon=🔁 " + (Select-Run $d.shop.id) + " tooltip='点一下，栅栏改成显示这家店'"
+}
+
 function Build-Screen {
   $L = New-Object System.Collections.Generic.List[string]
   $L.Add('~~~')
@@ -369,12 +407,34 @@ function Build-Screen {
       }
     }
   }
+  $script:ShopCount = $shops.Count
+  # 多家店：一次看一家，底部列出其他店，点一下切换
+  if ($shops.Count -ge 2 -and $ShopSwitch) {
+    $sel = Get-Selected
+    if ($sel -ne 'all') {
+      $cur = $null
+      foreach ($d in $shops) { if ((Safe-Id $d.shop.id) -eq $sel) { $cur = $d; break } }
+      if (-not $cur) { $cur = $shops[0] }
+      foreach ($x in (Shop-Lines $cur $true)) { $L.Add($x) }
+      $L.Add('---')
+      foreach ($d in $shops) {
+        if ((Safe-Id $d.shop.id) -eq (Safe-Id $cur.shop.id)) { continue }
+        $L.Add((Switch-Line $d))
+      }
+      $L.Add("全部门店一起看 | icon=🗂 color=gray " + (Select-Run 'all') + " tooltip='改成紧凑布局，所有店同时显示'")
+      return $L
+    }
+  }
   $single = ($shops.Count -eq 1)
   $first = $true
   foreach ($d in $shops) {
     if (-not $first) { $L.Add('---') }
     $first = $false
     foreach ($x in (Shop-Lines $d $single)) { $L.Add($x) }
+  }
+  if ($shops.Count -ge 2 -and $ShopSwitch) {
+    $L.Add('---')
+    $L.Add("一次只看一家店（可切换） | icon=🔁 color=gray " + (Select-Run $shops[0].shop.id) + " tooltip='改回完整布局，点底部的店名切换'")
   }
   return $L
 }
@@ -514,6 +574,7 @@ function Try-Listen {
 function Dir-Stamp {
   $s = 0
   foreach ($f in (Get-ChildItem $ShopDir -Filter '*.json' -ErrorAction SilentlyContinue)) { $s = $s -bxor $f.LastWriteTimeUtc.Ticks }
+  if (Test-Path $SelFile) { $s = $s -bxor (Get-Item $SelFile).LastWriteTimeUtc.Ticks }
   return $s
 }
 

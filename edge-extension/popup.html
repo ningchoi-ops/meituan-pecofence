@@ -30,7 +30,7 @@
   .meta { padding: 0 16px; color: var(--muted); font-size: 11px; }
   .row { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-top: 1px solid var(--line); }
   .row label { color: var(--muted); }
-  select, input[type=number] { background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; width: 120px; }
+  select, input[type=number], input[type=text] { background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; width: 120px; }
   .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px 16px; }
   button { border: 0; border-radius: 8px; padding: 8px 0; font: inherit; cursor: pointer; background: var(--card); color: var(--fg); }
   button.primary { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
@@ -67,7 +67,8 @@
   <div class="grid" id="grid"></div>
   <div class="meta" id="meta"></div>
 
-  <div class="row" style="margin-top:10px"><label>自动同步</label><label class="switch"><input type="checkbox" id="enabled"><span></span></label></div>
+  <div class="row" style="margin-top:10px"><label>这个配置文件的店铺名</label><input type="text" id="alias" maxlength="20" placeholder="留空用美团店名"></div>
+  <div class="row"><label>自动同步</label><label class="switch"><input type="checkbox" id="enabled"><span></span></label></div>
   <div class="row"><label>刷新间隔</label>
     <select id="interval"><option value="1">1 分钟</option><option value="2">2 分钟</option><option value="3">3 分钟</option><option value="5">5 分钟</option><option value="10">10 分钟</option></select>
   </div>

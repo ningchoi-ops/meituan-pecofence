@@ -1,7 +1,8 @@
 const DASH_URL = 'https://waimaie.meituan.com/#https://waimaieapp.meituan.com/igate/bizdata/home';
-const DEFAULTS = { enabled: true, intervalMin: 2, port: 17890, mode: 'hidden', hoursMode: 'auto', open: '09:00', close: '02:00', peer: true, notify: true };
+const DEFAULTS = { enabled: true, intervalMin: 2, port: 17890, mode: 'hidden', hoursMode: 'auto', open: '09:00', close: '02:00', peer: true, notify: true, alias: '' };
 const $ = (id) => document.getElementById(id);
 let curShop = null;
+let aliasNow = '';
 
 function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 1600); }
 function pill(id, cls, text) { const p = $(id); p.className = 'pill ' + cls; p.lastElementChild.textContent = text; }
@@ -23,7 +24,7 @@ function deltaHtml(m, money) {
 function render(st) {
   const ids = Object.keys(st.last || {});
   const g = $('grid');
-  $('shops').innerHTML = ids.length > 1 ? ids.map((id) => `<button data-id="${esc(id)}" class="${id === curShop ? 'on' : ''}">${esc((st.names || {})[id] || id)}</button>`).join('') : '';
+  $('shops').innerHTML = ids.length > 1 ? ids.map((id) => `<button data-id="${esc(id)}" class="${id === curShop ? 'on' : ''}">${esc(aliasNow || (st.names || {})[id] || id)}</button>`).join('') : '';
   $('shops').querySelectorAll('button').forEach((b) => b.onclick = () => { curShop = b.dataset.id; render(st); });
   if (!curShop || !ids.includes(curShop)) curShop = st.lastPoi && ids.includes(st.lastPoi) ? st.lastPoi : ids[0];
   const last = curShop ? st.last[curShop] : null;
@@ -66,6 +67,8 @@ async function load() {
   $('open').value = cfg.open; $('close').value = cfg.close;
   $('hoursRow').style.display = cfg.hoursMode === 'manual' ? '' : 'none';
   $('notify').checked = cfg.notify;
+  $('alias').value = cfg.alias || '';
+  aliasNow = (cfg.alias || '').trim();
   const status = (st.shopStatus || {})[st.lastPoi] || null;
   if (!status) pill('pShop', '', '—');
   else if (/营业中/.test(status)) pill('pShop', 'ok', status);
@@ -89,6 +92,7 @@ async function saveCfg() {
   const cfg = {
     ...DEFAULTS, enabled: $('enabled').checked, intervalMin: Number($('interval').value), port: Number($('port').value) || 17890,
     mode: $('mode').value, hoursMode: $('hoursMode').value, open: $('open').value || '09:00', close: $('close').value || '02:00', peer: $('peer').checked, notify: $('notify').checked,
+    alias: $('alias').value.trim(),
   };
   await chrome.storage.local.set({ cfg });
   await chrome.runtime.sendMessage({ type: 'cfg-changed' });
@@ -96,7 +100,7 @@ async function saveCfg() {
   load();
 }
 
-for (const id of ['enabled', 'interval', 'mode', 'hoursMode', 'open', 'close', 'peer', 'notify', 'port']) $(id).onchange = saveCfg;
+for (const id of ['enabled', 'interval', 'mode', 'hoursMode', 'open', 'close', 'peer', 'notify', 'port', 'alias']) $(id).onchange = saveCfg;
 $('refresh').onclick = async () => { await chrome.runtime.sendMessage({ type: 'refresh-now' }); toast('已在后台刷新，约 10 秒后更新'); };
 $('open2').onclick = () => chrome.tabs.create({ url: DASH_URL });
 $('resend').onclick = async () => { const r = await chrome.runtime.sendMessage({ type: 'resend' }); toast(r && r.ok ? '已推送到桌面' : '推送失败：栅栏没在运行？'); load(); };

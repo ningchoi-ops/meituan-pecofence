@@ -186,7 +186,7 @@
           const idx = t.indexOf(st);
           if (idx <= 0) continue;
           const before = t.slice(0, idx).trim().split('\n').pop().trim();
-          if (before.length >= 2 && before.length <= 40 && !/商家中心|美团外卖/.test(before)) return { name: before, status: st };
+          if (before.length >= 2 && before.length <= 40 && !/商家中心|美团外卖/.test(before) && !/[，。！？；：]/.test(before)) return { name: before, status: st }; // 带标点的是提示文字，不是店名
         }
         return { name: null, status: st };
       }

@@ -10,7 +10,10 @@ const DEFAULTS = {
   open: '09:00', close: '02:00',
   peer: true,
   notify: true,
+  alias: '',                  // 这个 Edge 配置文件对应的店铺名称（手动填写）；留空 = 用美团页面上读到的店名
 };
+// 栅栏上显示的店名：优先用弹窗里手动填写的名称
+const nameOf = (st, id, cfg) => ((cfg && cfg.alias) || '').trim() || st.names[id] || null;
 
 async function getCfg() {
   const s = await chrome.storage.local.get('cfg');
@@ -195,7 +198,7 @@ async function tick(force) {
   // 固定时间段模式：时间段外暂停
   if (cfg.hoursMode === 'manual' && !inManualHours(cfg) && !force) {
     await closeHidden(); await closeAllOwnWindows();
-    for (const id of Object.keys(st.last)) await push({ v: 2, shop: { id, name: st.names[id] || null }, status: 'paused', resumeAt: cfg.open, statusAt: Date.now() });
+    for (const id of Object.keys(st.last)) await push({ v: 2, shop: { id, name: nameOf(st, id, cfg) }, status: 'paused', resumeAt: cfg.open, statusAt: Date.now() });
     await setState({ paused: true });
     return;
   }
@@ -250,7 +253,7 @@ function payloadFor(st, id, cfg) {
   const closed = cfg.hoursMode === 'auto' && !isOpenStatus(status);
   return {
     ...d, v: 2, ext: chrome.runtime.getManifest().version,
-    shop: { id, name: st.names[id] || null, status }, peer: st.peers[id] || null,
+    shop: { id, name: nameOf(st, id, cfg), status }, peer: st.peers[id] || null,
     status: closed ? 'paused' : 'ok', pauseReason: closed ? `美团显示「${status}」` : null,
     statusAt: Date.now(),
   };
@@ -308,7 +311,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg.type === 'login') {
       const st = await setState({ loginAt: Date.now() });
       const id = st.lastPoi || 'default';
-      await push({ v: 2, shop: { id, name: st.names[id] || null }, status: 'login', statusAt: Date.now() });
+      await push({ v: 2, shop: { id, name: nameOf(st, id, cfg) }, status: 'login', statusAt: Date.now() });
       await notify('login');
     } else if (msg.type === 'debug') {
       await chrome.storage.local.set({ lastDebug: { ...msg, at: Date.now() } });
