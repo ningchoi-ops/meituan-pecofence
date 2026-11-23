@@ -6,7 +6,7 @@
 # ⚠ 不要直接改这个文件（自动更新会覆盖它）。要改设置，请编辑同一文件夹里的「设置.ps1」。
 # 想每家店一个栅栏：把本文件复制一份，改名为「美团今日经营-店名关键字.ps1」（例如 美团今日经营-海南粉.ps1）。
 
-$AppVersion = '2.1.0'
+$AppVersion = '2.2.0'
 $UpdateRepo = 'ningchoi-ops/meituan-pecofence'   # GitHub 仓库（用户名/仓库名），自动更新从这里下载
 
 # ---------- 默认设置（在「设置.ps1」里改，不要改这里） ----------
@@ -22,6 +22,11 @@ $ShowPeer      = $true      # 显示商圈同行转化率
 $AutoUpdate    = $true      # 自动从 GitHub 更新
 $BarOn         = '▰'        # 进度条字符；若显示成方框可改成 '■' / '□'
 $BarOff        = '▱'
+$GoalIncome    = 0          # 今日美团收入目标（元，按「预计订单收入」算）；0 = 不显示目标行
+$GoalOrders    = 0          # 今日订单量目标（单）；0 = 不显示
+$GoalNote      = ''         # 目标行的悬停说明，例如基准数据
+$Plan          = @{}        # 每日任务：@{ '2026-11-24' = '要做的事'; '2026-11-25' = @('要做的事', '悬停显示的细节') }
+$PlanDayStart  = 5          # 凌晨几点前仍算前一天（营业到凌晨时，01:00 还显示前一天的任务）
 
 $SettingsFile = Join-Path $PSScriptRoot '设置.ps1'
 if (-not (Test-Path $SettingsFile)) {
@@ -35,7 +40,12 @@ if (-not (Test-Path $SettingsFile)) {
     "# `$ShowYday      = `$false        # 不显示昨日全天",
     "# `$ShowPeer      = `$false        # 不显示商圈同行",
     "# `$AutoUpdate    = `$false        # 关闭自动更新",
-    "# `$BarOn = '■'; `$BarOff = '□'    # 进度条显示成方框时改用这两个字符"
+    "# `$BarOn = '■'; `$BarOff = '□'    # 进度条显示成方框时改用这两个字符",
+    "# `$GoalIncome = 1250              # 今日美团收入目标（元）；0 = 不显示目标行",
+    "# `$GoalOrders = 62                # 今日订单量目标（单）",
+    "# `$GoalNote   = '10月日均收入 920'  # 目标行的悬停说明",
+    "# `$Plan = @{ '2026-11-24' = '今天要做的一件事'; '2026-11-25' = @('要做的事', '悬停显示的细节') }",
+    "# `$PlanDayStart = 5               # 凌晨几点前仍算前一天"
   )
   try { [IO.File]::WriteAllText($SettingsFile, ($tpl -join "`r`n"), (New-Object System.Text.UTF8Encoding($true))) } catch { }
 }
@@ -98,6 +108,49 @@ function PtChange($now, $before) {
   return '▼' + (-$d).ToString('0.00') + 'pt'
 }
 function Join2($a, $b) { if ($b) { return "$a   $b" }; return $a }
+
+# 今日任务（设置.ps1 里的 $Plan）
+function Plan-Line {
+  if ($null -eq $Plan -or $Plan.Count -eq 0) { return $null }
+  $day = (Get-Date).AddHours(-[double]$PlanDayStart).ToString('yyyy-MM-dd')
+  $v = $Plan[$day]
+  if ($null -eq $v) { return $null }
+  $text = ''; $tip = ''
+  if ($v -is [array]) { $text = [string]$v[0]; if ($v.Count -gt 1) { $tip = [string]$v[1] } } else { $text = [string]$v }
+  if (-not $text) { return $null }
+  $line = '今日：' + (Clean $text) + ' | icon=📌 color=orange'
+  if ($tip) { $line += " tooltip='$(Clean $tip)'" }
+  return $line
+}
+
+# 今日目标（设置.ps1 里的 $GoalIncome / $GoalOrders）
+function Goal-Line($inc, $ord) {
+  $gi = [double]$GoalIncome; $go = [double]$GoalOrders
+  if ($gi -le 0 -and $go -le 0) { return $null }
+  $parts = @()
+  $done = $true
+  if ($gi -gt 0) {
+    $iv = 0.0
+    if (Has $inc) { $iv = [double]$inc.value }
+    $ratio = $iv / $gi
+    $t = '收入 ' + [math]::Floor($ratio * 100).ToString('0') + '%  ' + (Bar $ratio 1)
+    if ($iv -lt $gi) { $t += '  还差 ¥' + ($gi - $iv).ToString('N0'); $done = $false } else { $t += '  已达成' }
+    $parts += $t
+  }
+  if ($go -gt 0) {
+    $ov = 0.0
+    if (Has $ord) { $ov = [double]$ord.value }
+    if ($ov -lt $go) { $done = $false }
+    $parts += '单量 ' + $ov.ToString('N0') + '/' + $go.ToString('N0')
+  }
+  $tip = '今日目标：'
+  if ($gi -gt 0) { $tip += '收入 ' + (Money $gi) + ' ' }
+  if ($go -gt 0) { $tip += '单量 ' + (Int $go) + ' 单' }
+  if ($GoalNote) { $tip += '；' + $GoalNote }
+  $icon = '🎯'; $color = ''
+  if ($done) { $icon = '✅'; $color = ' color=green' }
+  return '目　标　' + ($parts -join ' · ') + " | icon=$icon$color tooltip='$(Clean $tip)'"
+}
 
 
 # ---------- 门店数据（多个栅栏共享同一个文件夹） ----------
@@ -243,6 +296,8 @@ function Shop-Lines($d, [bool]$single) {
     $L.Add((Join2 ('收　入　' + (Money $inc.value)) (Delta $inc -IsMoney)) + " | icon=💵 tooltip='预计订单收入：扣除平台服务费、配送费和活动补贴后的商家收入'")
     $L.Add((Join2 ('订单量　' + (IntU $ord.value '单')) (Delta $ord)) + ' | icon=🧾')
     $L.Add((Join2 ('客单价　' + (Money $avg)) $avgTxt) + " | icon=🧮 tooltip='客单价 = 订单实付 ÷ 订单量'")
+    $gl = Goal-Line $inc $ord
+    if ($gl) { $L.Add($gl) }
     $L.Add('---')
     $L.Add((Join2 ('曝光量　' + (IntU $exp.value '人')) (Delta $exp)) + ' | icon=👀')
     $tipE = '入店 ' + (Int $vis.value) + ' 人 ÷ 曝光 ' + (Int $exp.value) + ' 人'
@@ -289,6 +344,8 @@ function Shop-Lines($d, [bool]$single) {
 function Build-Screen {
   $L = New-Object System.Collections.Generic.List[string]
   $L.Add('~~~')
+  $pl = Plan-Line
+  if ($pl) { $L.Add($pl); $L.Add('---') }
   $shops = Load-AllShops
   if ($shops.Count -eq 0) {
     $t = '美团外卖 · 今日实时'
