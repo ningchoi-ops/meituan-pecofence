@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #fff; --fg: #1f2329; --muted: #8a8f99; --line: #eef0f3; --card: #f7f8fa;
+    --brand: #ffd100; --brand-ink: #3a2e00; --up: #e8453c; --down: #12a85b; --warn: #f08c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1f23; --fg: #e8eaed; --muted: #8f949c; --line: #2c2f35; --card: #262930; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 340px; font: 13px/1.45 "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px; background: var(--brand); color: var(--brand-ink); }
+  header .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--brand-ink); color: var(--brand); display: grid; place-items: center; font-weight: 800; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 700; }
+  header small { display: block; font-size: 11px; opacity: .75; }
+  .pills { display: flex; gap: 6px; padding: 12px 16px 4px; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--card); font-size: 12px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .ok .dot { background: var(--down); } .bad .dot { background: var(--up); } .warn .dot { background: var(--warn); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 16px; }
+  .kpi { background: var(--card); border-radius: 10px; padding: 9px 11px; }
+  .kpi:last-child:nth-child(odd) { grid-column: span 2; }
+  .kpi .k { color: var(--muted); font-size: 11px; }
+  .kpi .v { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+  .kpi .d { font-size: 11px; color: var(--muted); }
+  .d.up { color: var(--up); } .d.down { color: var(--down); }
+  .meta { padding: 0 16px; color: var(--muted); font-size: 11px; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-top: 1px solid var(--line); }
+  .row label { color: var(--muted); }
+  select, input[type=number] { background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; width: 120px; }
+  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px 16px; }
+  button { border: 0; border-radius: 8px; padding: 8px 0; font: inherit; cursor: pointer; background: var(--card); color: var(--fg); }
+  button.primary { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
+  button:hover { filter: brightness(.96); }
+  .switch { position: relative; width: 36px; height: 20px; }
+  .switch input { display: none; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: .2s; cursor: pointer; }
+  .switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .switch input:checked + span { background: var(--down); }
+  .switch input:checked + span::after { left: 18px; }
+  input[type=time] { background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; font: inherit; }
+  .shops { display: flex; gap: 6px; padding: 8px 16px 0; flex-wrap: wrap; }
+  .shops button { padding: 3px 10px; border-radius: 999px; font-size: 12px; }
+  .shops button.on { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
+  .kpi .p { font-size: 11px; color: var(--muted); }
+  #toast { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); background: #000c; color: #fff; padding: 4px 12px; border-radius: 999px; font-size: 12px; opacity: 0; transition: .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">美</div>
+    <div><h1>美团外卖 · 桌面看板</h1><small id="sub">后台隐藏读取今日实时数据 → PecoFence</small></div>
+  </header>
+
+  <div class="pills">
+    <span class="pill" id="pFence"><i class="dot"></i><b>桌面栅栏</b><span>检测中</span></span>
+    <span class="pill" id="pPage"><i class="dot"></i><b>美团页面</b><span>—</span></span>
+    <span class="pill" id="pShop"><i class="dot"></i><b>门店</b><span>—</span></span>
+    <span class="pill" id="pMode"><i class="dot"></i><b>方式</b><span>—</span></span>
+  </div>
+
+  <div class="shops" id="shops"></div>
+  <div class="grid" id="grid"></div>
+  <div class="meta" id="meta"></div>
+
+  <div class="row" style="margin-top:10px"><label>自动同步</label><label class="switch"><input type="checkbox" id="enabled"><span></span></label></div>
+  <div class="row"><label>刷新间隔</label>
+    <select id="interval"><option value="1">1 分钟</option><option value="2">2 分钟</option><option value="3">3 分钟</option><option value="5">5 分钟</option><option value="10">10 分钟</option></select>
+  </div>
+  <div class="row"><label>读取方式</label>
+    <select id="mode"><option value="hidden">完全隐藏</option><option value="window">最小化小窗口</option></select>
+  </div>
+  <div class="row"><label>什么时候读取</label>
+    <select id="hoursMode"><option value="auto">营业时（自动）</option><option value="manual">固定时间段</option><option value="off">一直读取</option></select>
+  </div>
+  <div class="row" id="hoursRow"><label>营业时间</label><span><input type="time" id="open"> – <input type="time" id="close"></span></div>
+  <div class="row"><label>出问题时弹通知提醒</label><label class="switch"><input type="checkbox" id="notify"><span></span></label></div>
+  <div class="row"><label>对比商圈同行（每天读一次）</label><label class="switch"><input type="checkbox" id="peer"><span></span></label></div>
+  <div class="row"><label>本机端口（与栅栏脚本一致）</label><input type="number" id="port" min="1024" max="65535"></div>
+
+  <div class="btns">
+    <button class="primary" id="refresh">立即刷新</button>
+    <button id="open2">打开经营数据</button>
+    <button id="resend">重新推送</button>
+    <button id="debug">复制调试信息</button>
+  </div>
+  <div id="toast"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

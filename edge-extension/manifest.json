@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "美团外卖 · 桌面经营看板",
+  "short_name": "美团桌面看板",
+  "version": "2.1.0",
+  "description": "在已登录的 Edge 里于后台隐藏读取美团外卖商家中心「今日实时数据」，推送到本机 PecoFence 桌面栅栏。",
+  "permissions": [
+    "alarms",
+    "storage",
+    "tabs",
+    "offscreen",
+    "declarativeNetRequestWithHostAccess",
+    "background",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://*.meituan.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.meituan.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "美团桌面看板",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

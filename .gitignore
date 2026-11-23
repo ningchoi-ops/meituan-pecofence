@@ -1,0 +1,11 @@
+# 个人数据，绝不能上传
+美团看板自检报告*.txt
+cookies.bin
+ua.txt
+login.lock
+EdgeProfile/
+data/
+*.zip
+
+# 每台电脑自己的设置，自动更新不会覆盖，也不上传
+pecofence/设置.ps1
