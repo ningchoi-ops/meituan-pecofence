@@ -6,7 +6,7 @@
 # ⚠ 不要直接改这个文件（自动更新会覆盖它）。要改设置，请编辑同一文件夹里的「设置.ps1」。
 # 想每家店一个栅栏：把本文件复制一份，改名为「美团今日经营-店名关键字.ps1」（例如 美团今日经营-海南粉.ps1）。
 
-$AppVersion = '2.3.0'
+$AppVersion = '2.3.1'
 $UpdateRepo = 'ningchoi-ops/meituan-pecofence'   # GitHub 仓库（用户名/仓库名），自动更新从这里下载
 
 # ---------- 默认设置（在「设置.ps1」里改，不要改这里） ----------
@@ -223,8 +223,10 @@ function Merge-Payload($p) {
   if ($old -and -not $p.shop.name -and $old.shop.name) { Set-Prop $p.shop 'name' $old.shop.name }
   if (-not $p.status) { Set-Prop $p 'status' 'ok' }
   Save-Shop $p
-  # 读到真实门店后，删掉首次安装时「未知门店」的占位记录
-  if ($p.shop.id -ne 'default') { Remove-Item (Join-Path $ShopDir 'default.json') -Force -ErrorAction SilentlyContinue }
+  # 读到真实门店后，删掉旧版留下的「未知门店」记录（以前多个账号都会挤进这几条，导致店名和数据对不上）
+  if ($p.shop.id -notin @('default', '-1', '0')) {
+    foreach ($bad in @('default', '-1', '0')) { Remove-Item (Join-Path $ShopDir "$bad.json") -Force -ErrorAction SilentlyContinue }
+  }
 }
 
 

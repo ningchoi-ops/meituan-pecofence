@@ -12,6 +12,40 @@ const DEFAULTS = {
   notify: true,
   alias: '',                  // 这个 Edge 配置文件对应的店铺名称（手动填写）；留空 = 用美团页面上读到的店名
 };
+// 门店 ID：页面地址里的 wmPoiId 才算数。没有 ID、或多店账号汇总视图给的 -1 / 0 都不可信。
+// 以前这些情况一律记成 'default'：多个 Edge 配置文件（多个账号）同时推送时，
+// 全都写进栅栏的同一条 default 记录，互相覆盖 → 栅栏只剩一家店、没法切换，店名和数据也对不上。
+const validPoi = (id) => /^\d+$/.test(String(id || '')) && Number(id) > 0;
+// 每个 Edge 配置文件一个固定的随机编号（一个配置文件 = 一套 cookie = 一个账号），拿不到门店 ID 时用它区分
+async function profileShopId() {
+  const s = await chrome.storage.local.get('profileKey');
+  let k = s.profileKey;
+  if (!k) {
+    k = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()).replace(/\W/g, '').slice(0, 10);
+    await chrome.storage.local.set({ profileKey: k });
+  }
+  return 'edge-' + k;
+}
+const ownKey = (id) => validPoi(id) || /^edge-\w+$/.test(String(id || ''));
+async function shopIdOf(raw) { return validPoi(raw) ? String(raw) : profileShopId(); }
+
+// 旧版存下的 default / -1 记录改到本配置文件自己的编号下
+async function migrateIds() {
+  const st = await getState();
+  const fb = await profileShopId();
+  let moved = false;
+  for (const k of ['last', 'names', 'peers', 'shopStatus']) {
+    const m = st[k] || {};
+    for (const id of Object.keys(m)) {
+      if (ownKey(id)) continue;
+      if (!(fb in m)) m[fb] = m[id];
+      delete m[id]; moved = true;
+    }
+  }
+  if (st.lastPoi && !ownKey(st.lastPoi)) { st.lastPoi = fb; moved = true; }
+  if (moved) await chrome.storage.local.set({ st });
+}
+
 // 栅栏上显示的店名：优先用弹窗里手动填写的名称
 const nameOf = (st, id, cfg) => ((cfg && cfg.alias) || '').trim() || st.names[id] || null;
 
@@ -62,8 +96,8 @@ async function schedule() {
   await chrome.alarms.clear('tick');
   chrome.alarms.create('tick', { periodInMinutes: Math.max(1, cfg.intervalMin), delayInMinutes: 0.1 });
 }
-chrome.runtime.onInstalled.addListener(() => serial(async () => { await cleanupLegacy(); await schedule(); }));
-chrome.runtime.onStartup.addListener(() => serial(async () => { await cleanupLegacy(); await schedule(); }));
+chrome.runtime.onInstalled.addListener(() => serial(async () => { await migrateIds(); await cleanupLegacy(); await schedule(); }));
+chrome.runtime.onStartup.addListener(() => serial(async () => { await migrateIds(); await cleanupLegacy(); await schedule(); }));
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name !== 'tick') return;
   serial(async () => { if (!(await checkDiskUpdate())) await tick(); });
@@ -284,7 +318,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
     } else if (msg.type === 'data') {
       const st = await getState();
-      const id = (msg.data.shop && msg.data.shop.id) || 'default';
+      const id = await shopIdOf(msg.data.shop && msg.data.shop.id);
       srcPoi[src] = id;
       const info = shellInfo[src] || {};
       if (info.name) st.names[id] = info.name;
@@ -298,19 +332,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await push(payloadFor(st, id, cfg));
     } else if (msg.type === 'hello') {
       const st = await getState();
-      const p = st.peers[msg.shopId || 'default'];
+      const id = await shopIdOf(msg.shopId);
+      const p = st.peers[id];
       sendResponse({ wantPeer: !!cfg.peer && (!p || p.date !== yesterday()) && (!p || Date.now() - (p.tryAt || 0) > 3600000) });
-      if (cfg.peer) { st.peers[msg.shopId || 'default'] = { ...(p || {}), tryAt: Date.now() }; await chrome.storage.local.set({ st }); }
+      if (cfg.peer) { st.peers[id] = { ...(p || {}), tryAt: Date.now() }; await chrome.storage.local.set({ st }); }
       return;
     } else if (msg.type === 'peer') {
       const st = await getState();
-      const id = msg.shopId || 'default';
+      const id = await shopIdOf(msg.shopId);
       st.peers[id] = { ...msg.peer, tryAt: Date.now() };
       await chrome.storage.local.set({ st });
       await push(payloadFor(st, id, cfg));
     } else if (msg.type === 'login') {
       const st = await setState({ loginAt: Date.now() });
-      const id = st.lastPoi || 'default';
+      const id = st.lastPoi || await profileShopId();
       await push({ v: 2, shop: { id, name: nameOf(st, id, cfg) }, status: 'login', statusAt: Date.now() });
       await notify('login');
     } else if (msg.type === 'debug') {

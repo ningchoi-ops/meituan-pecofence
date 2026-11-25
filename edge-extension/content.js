@@ -127,6 +127,12 @@
     return out;
   }
 
+  // 门店 ID：先看地址的查询参数，再看 # 后面（外壳页把子页面地址放在 # 里）
+  function poiId() {
+    const m = (location.search + '&' + location.hash).match(/[?&#]wmPoiId=(\d+)/);
+    return m && Number(m[1]) > 0 ? m[1] : null;
+  }
+
   function scrape() {
     const rtScope = findScope('今日实时数据', ['预计订单收入', '下单人数']);
     if (!rtScope) return null;
@@ -161,7 +167,7 @@
       rt,
       top: readTop(3),
       yday,
-      shop: { id: new URLSearchParams(location.search).get('wmPoiId') || null },
+      shop: { id: poiId() },
     };
   }
 
